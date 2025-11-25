@@ -3,12 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Agenda - JJFUTBOL</title>
+  <title>Agenda Combinada - JJFUTBOL</title>
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; background: #0f0f15; color: white; padding: 20px; }
-    #agenda-titulo { font-size: 1.6em; margin-bottom: 20px; color: #D4AF37; text-align: center; }
+    body { font-family: Arial, sans-serif; background: #0f0f15; color: white; padding: 20px; margin: 0; }
+    .header { text-align: center; padding: 15px 0; background: #0a0f2c; margin-bottom: 20px; border-radius: 12px; }
+    .header h1 { margin: 0; color: #D4AF37; }
+    .fuente-titulo { margin-top: 20px; margin-bottom: 12px; color: #FF8C00; font-size: 1.2em; }
     .evento-contenedor { margin-bottom: 15px; border-bottom: 1px solid #222; }
     .evento { display: flex; align-items: center; padding: 12px 0; cursor: pointer; }
     .hora { width: 60px; background: #1e3a8a; color: white; padding: 4px 8px; border-radius: 12px; font-weight: bold; text-align: center; }
@@ -20,22 +22,32 @@
     .canal-link:hover { text-decoration: underline; }
     .sin-canales { color: #888; }
     .error { color: red; text-align: center; padding: 20px; }
+    .loading { text-align: center; padding: 20px; color: #aaa; }
   </style>
 </head>
 <body>
-  <h1 id="agenda-titulo">Cargando agenda...</h1>
-  <div id="agenda-lista"></div>
+  <div class="header">
+    <h1>📅 Agenda Combinada - JJFUTBOL</h1>
+  </div>
+
+  <div id="agenda-contenido">
+    <div class="loading">Cargando ambas agendas...</div>
+  </div>
 
   <script>
     $(document).ready(function() {
-      const AGENDA_URL = "https://golazoplay.com/agenda.json"; // ✅ sin espacios
-      const agendaLista = $('#agenda-lista');
-      const tituloAgenda = $('#agenda-titulo');
+      // ✅ Fuentes de datos
+      const FUENTES = [
+        { url: "https://golazoplay.com/agenda.json?v=1.0", nombre: "GolazoPlay" },
+        // Si tu primera agenda expone JSON, agrégala aquí. Si no, usa solo golazoplay.
+      ];
 
-      function convertirHora(utcHour) {
-        if (!utcHour) return "--:--";
+      const contenedor = $('#agenda-contenido');
+
+      function convertirHora(horaLima) {
+        if (!horaLima) return "--:--";
         try {
-          const limpia = utcHour.split(':').slice(0, 2).join(':');
+          const limpia = horaLima.split(':').slice(0, 2).join(':');
           const dt = luxon.DateTime.fromFormat(limpia, "HH:mm", { zone: "America/Lima" });
           return dt.toLocal().toFormat("HH:mm");
         } catch (e) {
@@ -43,91 +55,98 @@
         }
       }
 
-      async function cargarAgenda() {
-        try {
-          const respuesta = await fetch(AGENDA_URL + "?t=" + new Date().getTime());
-          const json = await respuesta.json();
-          const eventos = json.data || [];
+      function procesarEventos(eventos, fuenteNombre) {
+        let html = `<div class="fuente-titulo">Fuente: ${fuenteNombre}</div>`;
+        if (!eventos || eventos.length === 0) {
+          html += '<p class="sin-canales">No hay eventos en esta fuente.</p>';
+          return html;
+        }
 
-          agendaLista.empty();
-          const hoy = new Date();
-          tituloAgenda.text('AGENDA - ' + hoy.getDate() + ' DE ' + hoy.toLocaleString('es-ES', { month: 'long' }).toUpperCase() + ' DE ' + hoy.getFullYear());
+        eventos.sort((a, b) => a.attributes.diary_hour?.localeCompare(b.attributes.diary_hour));
+        eventos.forEach(evento => {
+          const attr = evento.attributes || {};
+          const horaLocal = convertirHora(attr.diary_hour);
+          const titulo = attr.diary_description || "Evento sin nombre";
 
-          if (eventos.length === 0) {
-            agendaLista.html('<p class="error">No hay eventos programados para hoy.</p>');
-            return;
+          let urlIcono = "https://i.imgur.com/Vdef5Rz.png";
+          if (attr.country?.data?.attributes?.image?.data?.attributes?.url) {
+            urlIcono = "https://img.golazoplay.com" + attr.country.data.attributes.image.data.attributes.url;
           }
 
-          eventos.sort((a, b) => a.attributes.diary_hour?.localeCompare(b.attributes.diary_hour));
+          let canalesHtml = '<div class="canales">';
+          if (attr.embeds?.data?.length > 0) {
+            attr.embeds.data.forEach(embed => {
+              const nombreCanal = embed.attributes?.embed_name || "Canal";
+              const urlRelativa = (embed.attributes?.embed_iframe || "").trim();
 
-          eventos.forEach(evento => {
-            const attr = evento.attributes || {};
-            const horaLocal = convertirHora(attr.diary_hour);
-            const titulo = attr.diary_description || "Evento sin nombre";
-
-            let urlIcono = "https://i.imgur.com/Vdef5Rz.png";
-            if (attr.country?.data?.attributes?.image?.data?.attributes?.url) {
-              urlIcono = "https://img.golazoplay.com" + attr.country.data.attributes.image.data.attributes.url;
-            }
-
-            let canalesHtml = '<div class="canales">';
-            if (attr.embeds?.data?.length > 0) {
-              attr.embeds.data.forEach(embed => {
-                const nombreCanal = embed.attributes?.embed_name || "Canal";
-                const urlRelativaConParametro = (embed.attributes?.embed_iframe || "").trim();
-
-                try {
-                  // ✅ Extraer SOLO el parámetro "r"
-                  const partes = urlRelativaConParametro.split('?');
-                  if (partes.length > 1) {
-                    const params = new URLSearchParams(partes[1]);
-                    const urlRealCodificada = params.get("r");
-                    if (urlRealCodificada) {
-                      canalesHtml += `<a href="/embed/eventos.html?r=${encodeURIComponent(urlRealCodificada)}" target="_blank" class="canal-link">➤ ${nombreCanal}</a>`;
-                    } else {
-                      canalesHtml += `<span class="sin-canales">${nombreCanal} (No disponible)</span>`;
-                    }
+              try {
+                const partes = urlRelativa.split('?');
+                if (partes.length > 1) {
+                  const params = new URLSearchParams(partes[1]);
+                  const r = params.get("r");
+                  if (r) {
+                    canalesHtml += `<a href="/embed/eventos.html?r=${encodeURIComponent(r)}" target="_blank" class="canal-link">➤ ${nombreCanal}</a>`;
                   } else {
-                    canalesHtml += `<span class="sin-canales">${nombreCanal} (URL inválida)</span>`;
+                    canalesHtml += `<span class="sin-canales">${nombreCanal} (No disponible)</span>`;
                   }
-                } catch (e) {
-                  console.error("Error parseando URL:", urlRelativaConParametro, e);
-                  canalesHtml += `<span class="sin-canales">${nombreCanal} (Error)</span>`;
+                } else {
+                  canalesHtml += `<span class="sin-canales">${nombreCanal} (URL inválida)</span>`;
                 }
-              });
-            } else {
-              canalesHtml += `<span class="sin-canales">Próximamente...</span>`;
-            }
-            canalesHtml += '</div>';
+              } catch (e) {
+                canalesHtml += `<span class="sin-canales">${nombreCanal} (Error)</span>`;
+              }
+            });
+          } else {
+            canalesHtml += `<span class="sin-canales">Próximamente...</span>`;
+          }
+          canalesHtml += '</div>';
 
-            const eventoHtml = `
-              <div class="evento-contenedor">
-                <div class="evento">
-                  <div class="hora">${horaLocal}</div>
-                  <img src="${urlIcono}" class="evento-icono" alt="">
-                  <div class="info-evento">${titulo}</div>
-                  <div class="flecha">›</div>
-                </div>
-                ${canalesHtml}
+          html += `
+            <div class="evento-contenedor">
+              <div class="evento">
+                <div class="hora">${horaLocal}</div>
+                <img src="${urlIcono}" class="evento-icono" alt="">
+                <div class="info-evento">${titulo}</div>
+                <div class="flecha">›</div>
               </div>
-            `;
-            agendaLista.append(eventoHtml);
-          });
+              ${canalesHtml}
+            </div>
+          `;
+        });
+        return html;
+      }
 
-        } catch (error) {
-          console.error("Error al cargar la agenda:", error);
-          agendaLista.html('<p class="error">No se pudo cargar la agenda.</p>');
+      async function cargarAgendaCombinada() {
+        let htmlCompleto = '';
+        let cargadas = 0;
+
+        for (const fuente of FUENTES) {
+          try {
+            const res = await fetch(fuente.url + "?t=" + Date.now());
+            const data = await res.json();
+            const eventos = data.data || [];
+            htmlCompleto += procesarEventos(eventos, fuente.nombre);
+          } catch (e) {
+            console.error(`Error en fuente ${fuente.nombre}:`, e);
+            htmlCompleto += `<div class="fuente-titulo">Fuente: ${fuente.nombre}</div><p class="error">Error al cargar.</p>`;
+          }
+          cargadas++;
+          if (cargadas === FUENTES.length) {
+            contenedor.html(htmlCompleto || '<p class="error">No se pudo cargar ninguna agenda.</p>');
+          }
         }
       }
 
-      agendaLista.on('click', '.evento', function() {
-        const subMenu = $(this).siblings('.canales');
-        $('.canales').not(subMenu).slideUp('fast');
-        subMenu.slideToggle('fast');
+      // Evento para abrir/cerrar canales
+      $(document).on('click', '.evento', function() {
+        const menu = $(this).siblings('.canales');
+        $('.canales').not(menu).slideUp('fast');
+        menu.slideToggle('fast');
       });
 
-      cargarAgenda();
-      setInterval(cargarAgenda, 60000);
+      // Cargar
+      cargarAgendaCombinada();
+      setInterval(cargarAgendaCombinada, 60000);
     });
   </script>
 </body>
