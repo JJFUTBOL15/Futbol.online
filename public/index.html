@@ -7,148 +7,259 @@
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; background: #0f0f15; color: white; padding: 20px; margin: 0; }
-    .header { text-align: center; padding: 15px 0; background: #0a0f2c; margin-bottom: 20px; border-radius: 12px; }
-    .header h1 { margin: 0; color: #D4AF37; }
-    .fuente-titulo { margin-top: 20px; margin-bottom: 12px; color: #FF8C00; font-size: 1.2em; }
-    .evento-contenedor { margin-bottom: 15px; border-bottom: 1px solid #222; }
-    .evento { display: flex; align-items: center; padding: 12px 0; cursor: pointer; }
-    .hora { width: 60px; background: #1e3a8a; color: white; padding: 4px 8px; border-radius: 12px; font-weight: bold; text-align: center; }
-    .evento-icono { width: 24px; height: 24px; border-radius: 50%; margin: 0 10px; }
-    .info-evento { flex: 1; }
-    .flecha { color: #666; font-size: 1.5em; }
-    .canales { display: none; padding: 10px 0 10px 80px; }
-    .canal-link { display: block; color: #4ade80; text-decoration: none; margin: 6px 0; }
-    .canal-link:hover { text-decoration: underline; }
-    .sin-canales { color: #888; }
-    .error { color: red; text-align: center; padding: 20px; }
-    .loading { text-align: center; padding: 20px; color: #aaa; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f5f5f5;
+      margin: 0;
+      padding: 15px;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    .fuente-titulo {
+      padding: 10px 16px;
+      background: #34495e;
+      color: white;
+      font-size: 1.1em;
+      font-weight: bold;
+    }
+    #title-agenda {
+      text-align: center;
+      padding: 16px;
+      background: #e74c3c;
+      color: white;
+      margin: 0;
+      font-size: 1.4em;
+    }
+    #menu {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    #menu li {
+      border-bottom: 1px solid #eee;
+    }
+    #menu li > div {
+      display: flex;
+      align-items: center;
+      padding: 14px;
+      cursor: pointer;
+    }
+    #menu time {
+      width: 60px;
+      font-weight: bold;
+      color: #e74c3c;
+    }
+    #menu .flag {
+      width: 24px;
+      height: 24px;
+      margin: 0 10px;
+      border-radius: 50%;
+    }
+    #menu .match {
+      flex: 1;
+      font-size: 1.05em;
+    }
+    #menu ul {
+      list-style: none;
+      padding: 0 14px 14px 74px;
+      margin: 0;
+      display: none;
+    }
+    .submenu-item {
+      display: block;
+      padding: 6px 0;
+      color: #3498db;
+      text-decoration: none;
+      font-weight: bold;
+    }
+    .submenu-item:hover {
+      color: #e74c3c;
+    }
+    .loading {
+      padding: 20px;
+      text-align: center;
+      color: #777;
+    }
   </style>
 </head>
 <body>
-  <div class="header">
-    <h1>📅 Agenda Combinada - JJFUTBOL</h1>
-  </div>
-
-  <div id="agenda-contenido">
-    <div class="loading">Cargando agendas de GolazoPlay, HDV y más...</div>
+  <div class="container">
+    <h1 id="title-agenda">Agenda - Cargando...</h1>
+    <ul id="menu"></ul>
   </div>
 
   <script>
-    $(document).ready(function() {
-      // ✅ Fuentes de datos
-      const FUENTES = [
-        { url: "https://golazoplay.com/agenda.json?v=1.0", nombre: "GolazoPlay" },
-        { url: "https://ftvhd.com/diaries.json", nombre: "HDV" }, // ← La fuente de HDV
-        // Si tienes otra fuente JSON, agrégala aquí
-      ];
-
-      const contenedor = $('#agenda-contenido');
-
-      function convertirHora(horaLima) {
-        if (!horaLima) return "--:--";
-        try {
-          const limpia = horaLima.split(':').slice(0, 2).join(':');
-          const dt = luxon.DateTime.fromFormat(limpia, "HH:mm", { zone: "America/Lima" });
-          return dt.toLocal().toFormat("HH:mm");
-        } catch (e) {
-          return "--:--";
-        }
+    const FUENTES = [
+      {
+        url: "https://a.ftvhd.com/diaries.json",
+        imgBase: "https://img.futbolonlinehd.com",
+        siteBase: "https://jjfutbol.lat",
+        nombre: "HDV"
+      },
+      {
+        url: "https://golazoplay.com/agenda.json?v=1.0",
+        imgBase: "https://img.golazoplay.com",
+        siteBase: "https://jjfutbol.lat",
+        nombre: "GolazoPlay"
       }
+    ];
 
-      function procesarEventos(eventos, fuenteNombre) {
-        let html = `<div class="fuente-titulo">Fuente: ${fuenteNombre}</div>`;
-        if (!eventos || eventos.length === 0) {
-          html += '<p class="sin-canales">No hay eventos en esta fuente.</p>';
-          return html;
+    document.addEventListener("DOMContentLoaded", function () {
+      cargarAgendasCombinadas();
+      $(document).on("click", ".submenu-item", function (e) { e.stopPropagation(); });
+      $(document).on("click", ".toggle-submenu", function () {
+        const $submenu = $(this).closest("li").find("ul");
+        if (!$submenu.is(":visible")) {
+          $(".toggle-submenu").not(this).closest("li").find("ul").slideUp();
+          $submenu.slideDown();
+        } else {
+          $submenu.slideUp();
         }
+      });
+      setInterval(cargarAgendasCombinadas, 60000);
+    });
 
-        eventos.sort((a, b) => a.attributes.diary_hour?.localeCompare(b.attributes.diary_hour));
-        eventos.forEach(evento => {
-          const attr = evento.attributes || {};
-          const horaLocal = convertirHora(attr.diary_hour);
-          const titulo = attr.diary_description || "Evento sin nombre";
+    function convertToUserTimeZone(utcHour) {
+      if (!utcHour) return "--:--";
+      try {
+        const clean = utcHour.split(':').slice(0, 2).join(':');
+        const dt = luxon.DateTime.fromFormat(clean, "HH:mm", { zone: "America/Lima" });
+        return dt.toLocal().toFormat("HH:mm");
+      } catch (e) {
+        return "--:--";
+      }
+    }
 
-          let urlIcono = "https://i.imgur.com/Vdef5Rz.png";
-          if (attr.country?.data?.attributes?.image?.data?.attributes?.url) {
-            urlIcono = "https://img.golazoplay.com" + attr.country.data.attributes.image.data.attributes.url;
-          }
+    function formatDateSpanish(dateStr) {
+      const [y, m, d] = (dateStr || "").split("-").map(Number);
+      if (!y || !m || !d) return null;
+      const dt = new Date(y, m - 1, d);
+      return dt.toLocaleDateString("es-ES", { year: "numeric", month: "long", day: "numeric" });
+    }
 
-          let canalesHtml = '<div class="canales">';
-          if (attr.embeds?.data?.length > 0) {
-            attr.embeds.data.forEach(embed => {
-              const nombreCanal = embed.attributes?.embed_name || "Canal";
-              const urlRelativa = (embed.attributes?.embed_iframe || "").trim();
+    function extraerFechaMasComun(result) {
+      const arr = (result && result.data) ? result.data : [];
+      const dates = arr.map(it => it?.attributes?.date_diary).filter(Boolean);
+      if (dates.length === 0) return null;
+      const counts = {};
+      let best = dates[0], max = 0;
+      for (const d of dates) {
+        counts[d] = (counts[d] || 0) + 1;
+        if (counts[d] > max) { max = counts[d]; best = d; }
+      }
+      return best;
+    }
 
-              try {
-                const partes = urlRelativa.split('?');
-                if (partes.length > 1) {
-                  const params = new URLSearchParams(partes[1]);
-                  const r = params.get("r");
-                  if (r) {
-                    canalesHtml += `<a href="/embed/eventos.html?r=${encodeURIComponent(r)}" target="_blank" class="canal-link">➤ ${nombreCanal}</a>`;
-                  } else {
-                    canalesHtml += `<span class="sin-canales">${nombreCanal} (No disponible)</span>`;
-                  }
-                } else {
-                  canalesHtml += `<span class="sin-canales">${nombreCanal} (URL inválida)</span>`;
-                }
-              } catch (e) {
-                canalesHtml += `<span class="sin-canales">${nombreCanal} (Error)</span>`;
+    function obtenerTitulo(result) {
+      const dd = extraerFechaMasComun(result);
+      return dd ? formatDateSpanish(dd) : new Date().toLocaleDateString("es-ES");
+    }
+
+    function extraerParametroR(urlRelativa) {
+      try {
+        const partes = urlRelativa.split('?');
+        if (partes.length > 1) {
+          const params = new URLSearchParams(partes[1]);
+          return params.get("r");
+        }
+      } catch (e) {
+        console.warn("Error extrayendo parámetro r:", urlRelativa);
+      }
+      return null;
+    }
+
+    async function procesarFuente(fuente, menuHtml) {
+      try {
+        const res = await fetch(fuente.url + "?t=" + Date.now());
+        const result = await res.json();
+        if (!result?.data?.length) return menuHtml;
+
+        const titulo = obtenerTitulo(result);
+        menuHtml += `<li><div class="fuente-titulo">Fuente: ${fuente.nombre} — ${titulo}</div></li>`;
+
+        result.data.sort((a, b) => {
+          const A = (a.attributes?.date_diary || "") + (a.attributes?.diary_hour || "");
+          const B = (b.attributes?.date_diary || "") + (b.attributes?.diary_hour || "");
+          return A.localeCompare(B);
+        });
+
+        result.data.forEach(item => {
+          const attr = item.attributes || {};
+          const hora = convertToUserTimeZone(attr.diary_hour);
+          const nombre = attr.diary_description || "Evento sin título";
+          const flagUrl = attr.country?.data?.attributes?.image?.data?.attributes?.url;
+          const imageUrl = flagUrl ? fuente.imgBase + flagUrl : fuente.imgBase + "/uploads/sin_imagen_d36205f0e8.png";
+
+          let canalesHtml = '<ul style="display:none;">';
+          const embeds = attr.embeds?.data || [];
+          if (embeds.length > 0) {
+            embeds.forEach(embed => {
+              if (!embed?.attributes) return;
+              const nombreCanal = embed.attributes.embed_name || "Ver enlace";
+              const urlRelativa = (embed.attributes.embed_iframe || "").trim();
+              let urlFinal = "#";
+
+              // Intentar extraer parámetro "r" (como en GolazoPlay)
+              const r = extraerParametroR(urlRelativa);
+              if (r) {
+                urlFinal = `${fuente.siteBase}/embed/eventos.html?r=${encodeURIComponent(r)}`;
+              } else if (urlRelativa.startsWith("/")) {
+                // Si no hay "r", tratar como ruta relativa (como en HDV)
+                urlFinal = fuente.siteBase + urlRelativa;
+              } else if (urlRelativa.startsWith("http")) {
+                urlFinal = urlRelativa;
               }
+
+              canalesHtml += `
+                <li class="submenu">
+                  <a href="${urlFinal}" class="submenu-item" target="_blank">
+                    <i class="fa fa-play-circle"></i> ${nombreCanal}
+                  </a>
+                </li>`;
             });
           } else {
-            canalesHtml += `<span class="sin-canales">Próximamente...</span>`;
+            canalesHtml += `<li class="submenu"><span class="submenu-item" style="color:#999;">Próximamente...</span></li>`;
           }
-          canalesHtml += '</div>';
+          canalesHtml += '</ul>';
 
-          html += `
-            <div class="evento-contenedor">
-              <div class="evento">
-                <div class="hora">${horaLocal}</div>
-                <img src="${urlIcono}" class="evento-icono" alt="">
-                <div class="info-evento">${titulo}</div>
-                <div class="flecha">›</div>
+          menuHtml += `
+            <li class="toggle-submenu">
+              <div>
+                <time>${hora}</time>
+                <img class="flag" src="${imageUrl}" alt="Bandera">
+                <span class="match">${nombre}</span>
               </div>
               ${canalesHtml}
-            </div>
-          `;
+            </li>`;
         });
-        return html;
+      } catch (e) {
+        console.error(`Error en fuente ${fuente.nombre}:`, e);
+      }
+      return menuHtml;
+    }
+
+    async function cargarAgendasCombinadas() {
+      const menu = document.getElementById("menu");
+      menu.innerHTML = '<li><div class="loading">Cargando HDV y GolazoPlay...</div></li>';
+
+      let menuHtml = "";
+      for (const fuente of FUENTES) {
+        menuHtml = await procesarFuente(fuente, menuHtml);
       }
 
-      async function cargarAgendaCombinada() {
-        let htmlCompleto = '';
-        let cargadas = 0;
+      menu.innerHTML = menuHtml || '<li><div class="loading" style="color:red;">No se pudo cargar ninguna agenda.</div></li>';
 
-        for (const fuente of FUENTES) {
-          try {
-            const res = await fetch(fuente.url + "?t=" + Date.now());
-            const data = await res.json();
-            const eventos = data.data || [];
-            htmlCompleto += procesarEventos(eventos, fuente.nombre);
-          } catch (e) {
-            console.error(`Error en fuente ${fuente.nombre}:`, e);
-            htmlCompleto += `<div class="fuente-titulo">Fuente: ${fuente.nombre}</div><p class="error">Error al cargar.</p>`;
-          }
-          cargadas++;
-          if (cargadas === FUENTES.length) {
-            contenedor.html(htmlCompleto || '<p class="error">No se pudo cargar ninguna agenda.</p>');
-          }
-        }
-      }
-
-      // Evento para abrir/cerrar canales
-      $(document).on('click', '.evento', function() {
-        const menu = $(this).siblings('.canales');
-        $('.canales').not(menu).slideUp('fast');
-        menu.slideToggle('fast');
+      // Actualizar título principal
+      document.getElementById("title-agenda").textContent = "Agenda - " + new Date().toLocaleDateString("es-ES", {
+        year: "numeric", month: "long", day: "numeric"
       });
-
-      // Cargar
-      cargarAgendaCombinada();
-      setInterval(cargarAgendaCombinada, 60000);
-    });
+    }
   </script>
 </body>
 </html>
