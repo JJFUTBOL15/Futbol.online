@@ -31,7 +31,7 @@
   </div>
 
   <div id="agenda-contenido">
-    <div class="loading">Cargando ambas agendas...</div>
+    <div class="loading">Cargando agendas de GolazoPlay, HDV y más...</div>
   </div>
 
   <script>
@@ -39,7 +39,8 @@
       // ✅ Fuentes de datos
       const FUENTES = [
         { url: "https://golazoplay.com/agenda.json?v=1.0", nombre: "GolazoPlay" },
-        // Si tu primera agenda expone JSON, agrégala aquí. Si no, usa solo golazoplay.
+        { url: "https://ftvhd.com/diaries.json", nombre: "HDV" }, // ← La fuente de HDV
+        // Si tienes otra fuente JSON, agrégala aquí
       ];
 
       const contenedor = $('#agenda-contenido');
